@@ -2378,26 +2378,81 @@ async function handleUpload() {
   const thisFile = document.getElementById("file-this").files[0];
   const lastFile = document.getElementById("file-last").files[0];
   if (!thisFile || !lastFile) {
-    alert("Please pick both files.");
+    document.getElementById("upload-status").textContent = "❌ Please select BOTH files.";
     return;
   }
-  document.getElementById("upload-status").textContent = "Loading…";
+  
+  // Sanity check: files should have some size
+  if (thisFile.size === 0 || lastFile.size === 0) {
+    document.getElementById("upload-status").textContent = "❌ One or both files are empty.";
+    return;
+  }
+  
+  // Check PapaParse is available
+  if (typeof Papa === 'undefined') {
+    document.getElementById("upload-status").textContent = "❌ PapaParse library failed to load. Try reloading the page.";
+    return;
+  }
+  
+  document.getElementById("upload-status").textContent = "⏳ Loading and parsing CSVs…";
   try {
     const [thisRows, lastRows] = await Promise.all([
       loadCsvFile(thisFile, "This Year"),
       loadCsvFile(lastFile, "Last Year"),
     ]);
+    
+    // Sanity check the result
+    if (!thisRows || !lastRows || thisRows.length === 0 || lastRows.length === 0) {
+      throw new Error("One or both files parsed but contained no data rows.");
+    }
+    
     STATE.rows = [...thisRows, ...lastRows];
-    document.getElementById("upload-screen").style.display = "none";
-    document.getElementById("app-shell").style.display = "flex";
-    buildSidebar();
-    renderPage();
+    document.getElementById("upload-status").textContent = "✅ Loaded! Initializing…";
+    
+    // Brief delay for visual feedback, then switch screens
+    setTimeout(() => {
+      document.getElementById("upload-screen").style.display = "none";
+      document.getElementById("app-shell").style.display = "flex";
+      buildSidebar();
+      renderPage();
+    }, 500);
   } catch (err) {
-    document.getElementById("upload-status").textContent = "Error: " + err.message;
-    console.error(err);
+    console.error("Upload error:", err);
+    document.getElementById("upload-status").textContent = 
+      "❌ Error: " + (err.message || String(err)).substring(0, 100);
   }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("upload-btn").addEventListener("click", handleUpload);
+  const uploadBtn = document.getElementById("upload-btn");
+  const fileThis = document.getElementById("file-this");
+  const fileLast = document.getElementById("file-last");
+  
+  if (!uploadBtn || !fileThis || !fileLast) {
+    console.error("Upload elements not found in DOM. Check index.html.");
+    return;
+  }
+  
+  uploadBtn.addEventListener("click", handleUpload);
+  
+  // Show visual feedback when files are selected
+  fileThis.addEventListener("change", (e) => {
+    const label = document.querySelector('label[for="file-this"] .file-drop-hint');
+    if (label && e.target.files[0]) {
+      label.textContent = "✓ " + e.target.files[0].name;
+    }
+  });
+  fileLast.addEventListener("change", (e) => {
+    const label = document.querySelector('label[for="file-last"] .file-drop-hint');
+    if (label && e.target.files[0]) {
+      label.textContent = "✓ " + e.target.files[0].name;
+    }
+  });
+  
+  // Also allow Enter key to trigger upload (accessibility)
+  document.addEventListener("keypress", (e) => {
+    if (e.key === "Enter" && document.getElementById("upload-screen").style.display !== "none") {
+      handleUpload();
+    }
+  });
 });
